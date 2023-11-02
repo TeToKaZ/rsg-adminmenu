@@ -1,5 +1,5 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
-
+local savedCoords = {}
 -----------------------------------------------------------------------
 -- version checker
 -----------------------------------------------------------------------
@@ -74,6 +74,101 @@ RSGCore.Functions.CreateCallback('rsg-adminmenu:server:getplayers', function(sou
 
     cb(players)
 end)
+
+RSGCore.Commands.Add('bring', 'Bring a player to you (Admin only)', { { name = 'id', help = 'Player ID' }, }, true, function(source, args)
+    local src = source
+    if RSGCore.Functions.HasPermission(src, permissions['bring']) or IsPlayerAceAllowed(src, 'command')  then
+        if args[1] then
+            local admin = GetPlayerPed(src)
+            local coords = GetEntityCoords(admin)
+            local target = GetPlayerPed(tonumber(args[1]))
+            SetEntityCoords(target, coords)
+            savedCoords[tonumber(args[1])]= GetEntityCoords(target)
+        end
+    else
+        BanPlayer(src)
+    end
+end, 'mod')
+
+RSGCore.Commands.Add('bringback', 'Bring back a player (Admin only)', { { name = 'id', help = 'Player ID' }, }, true, function(source, args)
+    local src = source
+    if RSGCore.Functions.HasPermission(src, permissions['bring']) or IsPlayerAceAllowed(src, 'command')  then
+        if args[1] then
+            local coords = savedCoords[tonumber(args[1])]
+            local target = GetPlayerPed(tonumber(args[1]))
+            SetEntityCoords(target, coords)
+        end
+    else
+        BanPlayer(src)
+    end
+end, 'mod')
+
+RSGCore.Commands.Add('goto', 'Teleport yourself to the player (Admin only)', { { name = 'id/x', help = 'ID of player or X position' }, { name = 'y', help = 'Y position' }, { name = 'z', help = 'Z position' } }, false, function(source, args)
+    local src = source
+    if RSGCore.Functions.HasPermission(src, permissions['goto']) or IsPlayerAceAllowed(src, 'command')  then
+        if args[1] and not args[2] and not args[3] then
+            local target = GetPlayerPed(tonumber(args[1]))
+            if target ~= 0 then
+                local coords = GetEntityCoords(target)
+                TriggerClientEvent('RSGCore:Command:TeleportToPlayer', source, coords)
+            end
+        else
+            if args[1] and args[2] and args[3] then
+                local x = tonumber((args[1]:gsub(",",""))) + .0
+                local y = tonumber((args[2]:gsub(",",""))) + .0
+                local z = tonumber((args[3]:gsub(",",""))) + .0
+                if x ~= 0 and y ~= 0 and z ~= 0 then
+                    TriggerClientEvent('RSGCore:Command:TeleportToCoords', source, x, y, z)
+                end
+            end
+        end
+    else
+        BanPlayer(src)
+    end
+end, 'mod')
+
+RSGCore.Commands.Add('spawnwildhorse', 'Spawn Wild Horse (Admin only)', {{ name = "model", help = " Horse Model" }, { name = 'Coat', help = '0 - 5' }}, false, function(source, args)
+    if RSGCore.Functions.HasPermission(src, permissions['spawnhorse']) or IsPlayerAceAllowed(src, 'command')  then
+        local horseModel = args[1] -- The model name for the horse
+        local outfit = tonumber(args[2]) or 0 -- The outfit index for the horse (default: 0)
+        local freezeTime = 20000 -- The time to freeze the horse in milliseconds (50 seconds)
+        local timeout = 10000 -- Set a timeout of 10 seconds for model loading
+
+        print('Requesting model: ' .. horseModel)
+        RequestModel(horseModel)
+        local startTime = GetGameTimer() -- Get the start time
+        while not HasModelLoaded(horseModel) do
+            Wait(10)
+            print('Waiting for model to load...')
+            if GetGameTimer() - startTime > timeout then
+                print('Model loading timeout. Aborting...')
+                return -- Exit the function
+            end
+        end
+        print('Model loaded successfully')
+
+        local player = PlayerId()
+        local playerCoords = GetEntityCoords(PlayerPedId())
+        local horse = CreatePed(horseModel, playerCoords.x, playerCoords.y + 5.0, playerCoords.z, true, true, true)
+
+        if DoesEntityExist(horse) then
+            print('Horse entity created')
+            Citizen.InvokeNative(0x77FF8D35EEC6BBC4, horse, outfit, false)
+            print('Outfit applied to the horse')
+            
+            -- Freeze the horse for the specified duration
+            FreezeEntityPosition(horse, true)
+            Wait(freezeTime)
+            FreezeEntityPosition(horse, false)
+            print('Horse unfrozen')
+
+            -- Make the horse untamed and wild
+            Citizen.InvokeNative(0xAEB97D84CDF3C00B, horse, true) -- _SET_ANIMAL_IS_WILD
+        end
+    else
+        BanPlayer(src)
+    end
+end, 'mod')
 
 -----------------------------------------------------------------------
 -- revive player
@@ -187,6 +282,21 @@ RegisterNetEvent('rsg-adminmenu:server:bringplayer', function(player)
     if RSGCore.Functions.HasPermission(src, permissions['bring']) or IsPlayerAceAllowed(src, 'command') then
         local admin = GetPlayerPed(src)
         local coords = GetEntityCoords(admin)
+        local target = GetPlayerPed(player.id)
+        SetEntityCoords(target, coords)
+    else
+        BanPlayer(src)
+    end
+end)
+
+-----------------------------------------------------------------------
+-- send back player
+----------------------------------------------------------------------
+RegisterNetEvent('rsg-adminmenu:server:sendback', function(player)
+    local src = source
+    if RSGCore.Functions.HasPermission(src, permissions['sendback']) or IsPlayerAceAllowed(src, 'command') then
+        local admin = GetPlayerPed(src)
+        local coors = savedCoords[tonumber(player.id)]
         local target = GetPlayerPed(player.id)
         SetEntityCoords(target, coords)
     else
